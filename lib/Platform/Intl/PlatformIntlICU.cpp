@@ -10,7 +10,6 @@
 #include "hermes/Platform/Intl/PlatformIntlShared.h"
 
 #include <deque>
-#include <shared_mutex>
 #include <string>
 #include <unordered_map>
 #include "llvh/Support/ConvertUTF.h"
@@ -263,13 +262,11 @@ ResolvedLocale resolveLocale(
 }
 } // namespace
 
-namespace {
 /// Thread safe management of time zone names map.
-class TimeZoneNames {
+class TimeZoneNamesICU : public TimeZoneNamesShared {
  public:
-  /// Initializing the underlying map with all known time zone names in
-  /// NSTimeZone.
-  TimeZoneNames() {
+  /// Initializing the underlying map with all known time zone names in ICU
+  TimeZoneNamesICU() {
     StringEnumeration *icuTimeZones = TimeZone::createEnumeration();
     UErrorCode status = U_ZERO_ERROR;
     int32_t *resultLength = new int32_t();
@@ -281,51 +278,10 @@ class TimeZoneNames {
       zoneId = icuTimeZones->unext(resultLength, status);
     }
   }
-
-  /// Check if \p tz is a valid time zone name.
-  bool contains(std::u16string_view tz) const {
-    std::shared_lock lock(mutex_);
-    return timeZoneNamesMap_.find(toASCIIUppercase(tz)) !=
-        timeZoneNamesMap_.end();
-  }
-
-  /// Get canonical time zone name for \p tz. Note that \p tz must
-  /// be a valid key in the map.
-  std::u16string getCanonical(std::u16string_view tz) const {
-    std::shared_lock lock(mutex_);
-    auto ianaTimeZoneIt = timeZoneNamesMap_.find(toASCIIUppercase(tz));
-    assert(
-        ianaTimeZoneIt != timeZoneNamesMap_.end() &&
-        "getCanonical() must be called on valid time zone name.");
-    return ianaTimeZoneIt->second;
-  }
-
-  /// Update the time zone name map with \p tz if it does not exist yet.
-  void update(std::u16string_view tz) {
-    auto upper = toASCIIUppercase(tz);
-    // Read lock and check if tz is already in the map.
-    {
-      std::shared_lock lock(mutex_);
-      if (timeZoneNamesMap_.find(upper) != timeZoneNamesMap_.end()) {
-        return;
-      }
-    }
-    // If not, write lock and insert it into the map.
-    {
-      std::unique_lock lock(mutex_);
-      timeZoneNamesMap_.emplace(upper, tz);
-    }
-  }
-
- private:
-  /// Map from upper case time zone name to canonical time zone name.
-  std::unordered_map<std::u16string, std::u16string> timeZoneNamesMap_;
-  mutable std::shared_mutex mutex_;
 };
-} // namespace
 
-static TimeZoneNames &validTimeZoneNames() {
-  static TimeZoneNames validTimeZoneNames;
+static TimeZoneNamesICU &validTimeZoneNames() {
+  static TimeZoneNamesICU validTimeZoneNames;
   return validTimeZoneNames;
 }
 

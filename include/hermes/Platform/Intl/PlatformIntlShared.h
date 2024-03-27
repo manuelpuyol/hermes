@@ -10,6 +10,7 @@
 
 #ifdef HERMES_ENABLE_INTL
 #include "hermes/Platform/Intl/PlatformIntl.h"
+#include <shared_mutex>
 
 namespace hermes {
 namespace platform_intl {
@@ -23,6 +24,17 @@ struct ResolvedLocale {
   std::u16string locale;
   std::u16string dataLocale;
   std::unordered_map<std::u16string, std::u16string> extensions;
+};
+
+class TimeZoneNamesShared {
+ public:
+  bool contains(std::u16string_view tz) const;
+  std::u16string getCanonical(std::u16string_view tz) const;
+  void update(std::u16string_view tz);
+
+ protected:
+  std::unordered_map<std::u16string, std::u16string> timeZoneNamesMap_;
+  mutable std::shared_mutex mutex_;
 };
 
 vm::CallResult<std::vector<std::u16string>> canonicalizeLocaleList(

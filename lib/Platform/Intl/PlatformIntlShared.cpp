@@ -8,12 +8,47 @@
 // This file includes shared code between Apple and Windows implementation of
 // Intl APIs
 #include "hermes/Platform/Intl/BCP47Parser.h"
-#include "hermes/Platform/Intl/PlatformIntl.h"
+#include "hermes/Platform/Intl/PlatformIntlShared.h"
 
 using namespace ::hermes;
 
 namespace hermes {
 namespace platform_intl {
+
+/// Check if \p tz is a valid time zone name.
+bool TimeZoneNamesShared::contains(std::u16string_view tz) const {
+  std::shared_lock lock(mutex_);
+  return timeZoneNamesMap_.find(toASCIIUppercase(tz)) !=
+      timeZoneNamesMap_.end();
+}
+
+/// Get canonical time zone name for \p tz. Note that \p tz must
+/// be a valid key in the map.
+std::u16string TimeZoneNamesShared::getCanonical(std::u16string_view tz) const {
+  std::shared_lock lock(mutex_);
+  auto ianaTimeZoneIt = timeZoneNamesMap_.find(toASCIIUppercase(tz));
+  assert(
+      ianaTimeZoneIt != timeZoneNamesMap_.end() &&
+      "getCanonical() must be called on valid time zone name.");
+  return ianaTimeZoneIt->second;
+}
+
+/// Update the time zone name map with \p tz if it does not exist yet.
+void TimeZoneNamesShared::update(std::u16string_view tz) {
+  auto upper = toASCIIUppercase(tz);
+  // Read lock and check if tz is already in the map.
+  {
+    std::shared_lock lock(mutex_);
+    if (timeZoneNamesMap_.find(upper) != timeZoneNamesMap_.end()) {
+      return;
+    }
+  }
+  // If not, write lock and insert it into the map.
+  {
+    std::unique_lock lock(mutex_);
+    timeZoneNamesMap_.emplace(upper, tz);
+  }
+}
 
 // https://tc39.es/ecma402/#sec-canonicalizelocalelist
 vm::CallResult<std::vector<std::u16string>> canonicalizeLocaleList(
